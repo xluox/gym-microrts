@@ -45,7 +45,7 @@ def parse_args():
         help="the entity (team) of wandb's project")
 
     # Algorithm specific arguments
-    parser.add_argument('--partial-obs', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True,
+    parser.add_argument('--partial-obs', type=lambda x: bool(strtobool(x)), default=True, nargs='?', const=True,
         help='if toggled, the game will have partial observability')
     parser.add_argument('--n-minibatch', type=int, default=4,
         help='the number of mini batch')
@@ -249,7 +249,7 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
-        CHECKPOINT_FREQUENCY = 50
+        CHECKPOINT_FREQUENCY = 10
     writer = SummaryWriter(f"runs/{experiment_name}")
     writer.add_text(
         "hyperparameters", "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()]))

@@ -7,7 +7,7 @@ python ppo_autoregressive.py \
 
 
 export WANDB_RESUME=must
-export WANDB_RUN_ID=2kse3aqy
+export WANDB_RUN_ID=2lnk085u
 python ppo_autoregressive.py \
     --wandb-project-name gym-microrts \
     --total-timesteps 100000000 \
@@ -154,3 +154,6 @@ python ppo_gridnet_diverse.py \
     --prod-mode \
     --wandb-entity vwxyzjn --cuda True \
     --capture-video \
+
+WANDB_RESUME=must WANDB_RUN_ID=2lzch3oh python3 \
+ new_ppo_gridnet.py --prod-mode --capture-video
