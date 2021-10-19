@@ -58,7 +58,7 @@ def parse_args():
         help='the number of steps per game environment')
     parser.add_argument("--agent-model-path", type=str, default="POagent.pt",
         help="the path to the agent's model")
-    parser.add_argument('--ai', type=str, default="POHeavyRush",
+    parser.add_argument('--ai', type=str, default="POWorkerRush",
         help='the number of steps per game environment')
 
     args = parser.parse_args()
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         max_steps=5000,
         render_theme=2,
         ai2s=ais,
-        map_path="maps/16x16/basesWorkers16x16A.xml",
+        map_path="maps/16x16/basesWorkers16x16C.xml",
         reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
     )
     envs = MicroRTSStatsRecorder(envs)
