@@ -4,9 +4,11 @@ import argparse
 import os
 import random
 import time
+import subprocess
 from distutils.util import strtobool
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -39,7 +41,7 @@ def parse_args():
         help='run the script in production mode and use wandb to log outputs')
     parser.add_argument('--capture-video', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True,
         help='weather to capture videos of the agent performances (check out `videos` folder)')
-    parser.add_argument('--wandb-project-name', type=str, default="cleanRL",
+    parser.add_argument('--wandb-project-name', type=str, default="gym-microrts",
         help="the wandb's project name")
     parser.add_argument('--wandb-entity', type=str, default=None,
         help="the entity (team) of wandb's project")
@@ -83,6 +85,8 @@ def parse_args():
         help="Toggle learning rate annealing for policy and value networks")
     parser.add_argument('--clip-vloss', type=lambda x: bool(strtobool(x)), default=True, nargs='?', const=True,
         help='Toggles wheter or not to use a clipped loss for the value function, as per the paper.')
+    parser.add_argument('--num-models', type=int, default=200,
+        help='the number of models saved')
 
     args = parser.parse_args()
     if not args.seed:
@@ -90,6 +94,8 @@ def parse_args():
     args.num_envs = args.num_selfplay_envs + args.num_bot_envs
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.n_minibatch)
+    args.num_updates = args.total_timesteps // args.batch_size
+    args.save_frequency = int(args.num_updates // 100)
     # fmt: on
     return args
 
@@ -160,6 +166,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 
+
 class Agent(nn.Module):
     def __init__(self, envs, mapsize=16 * 16):
         super(Agent, self).__init__()
@@ -205,7 +212,7 @@ class Agent(nn.Module):
 
         if action is None:
             # invalid_action_masks = torch.tensor(np.array(envs.vec_client.getMasks(0))).to(device)
-            invalid_action_masks = invalid_action_masks.reshape(-1, invalid_action_masks.shape[-1])
+            invalid_action_masks = invalid_action_masks.view(-1, invalid_action_masks.shape[-1])
             split_invalid_action_masks = torch.split(invalid_action_masks, envs.action_plane_space.nvec.tolist(), dim=1)
             multi_categoricals = [
                 CategoricalMasked(logits=logits, masks=iam, device=device)
@@ -232,6 +239,7 @@ class Agent(nn.Module):
         return self.critic(self.encoder(x))
 
 
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -243,12 +251,13 @@ if __name__ == "__main__":
         run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
-            sync_tensorboard=True,
+            # sync_tensorboard=True,
             config=vars(args),
             name=experiment_name,
             monitor_gym=True,
             save_code=True,
         )
+        wandb.tensorboard.patch(save=False)
         CHECKPOINT_FREQUENCY = 50
     writer = SummaryWriter(f"runs/{experiment_name}")
     writer.add_text(
@@ -307,7 +316,6 @@ if __name__ == "__main__":
     # https://github.com/ikostrikov/pytorch-a2c-ppo-acktr-gail/blob/84a7582477fb0d5c82ad6d850fe476829dddd2e1/a2c_ppo_acktr/storage.py#L60
     next_obs = torch.Tensor(envs.reset()).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    num_updates = args.total_timesteps // args.batch_size
 
     ## CRASH AND RESUME LOGIC:
     starting_update = 1
@@ -330,10 +338,18 @@ if __name__ == "__main__":
     total_params = sum([param.nelement() for param in agent.parameters()])
     print("Model's total parameters:", total_params)
 
-    for update in range(starting_update, num_updates + 1):
+    ## EVALUATION LOGIC:
+    eval_queue = []
+    trueskill_df = pd.read_csv("league.csv")
+    trueskill_step_df = pd.read_csv("league.csv")
+    trueskill_step_df["type"] = trueskill_step_df["name"]
+    trueskill_step_df["step"] = 0
+    preset_trueskill_step_df = trueskill_step_df.copy()
+
+    for update in range(starting_update, args.num_updates + 1):
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
-            frac = 1.0 - (update - 1.0) / num_updates
+            frac = 1.0 - (update - 1.0) / args.num_updates
             lrnow = lr(frac)
             optimizer.param_groups[0]["lr"] = lrnow
 
@@ -454,11 +470,44 @@ if __name__ == "__main__":
 
         ## CRASH AND RESUME LOGIC:
         if args.prod_mode:
-            # make sure to tune `CHECKPOINT_FREQUENCY` so models are not saved too frequently
-            if update % CHECKPOINT_FREQUENCY == 0:
-                torch.save(agent.state_dict(), f"{wandb.run.dir}/agent.pt")
-                wandb.save(f"{wandb.run.dir}/agent.pt", policy="now")
-                print("model saved")
+            if (update-1) % args.save_frequency == 0:
+                if not os.path.exists(f"models/{experiment_name}"):
+                    os.makedirs(f"models/{experiment_name}")
+                torch.save(agent.state_dict(), f"models/{experiment_name}/agent.pt")
+                torch.save(agent.state_dict(), f"models/{experiment_name}/{global_step}.pt")
+                wandb.save(f"models/{experiment_name}/agent.pt", base_path=f"models/{experiment_name}", policy="now")
+                subprocess.Popen(["python", "new_league.py", "--evals", f"models/{experiment_name}/{global_step}.pt", "--update-db", "false"])
+                eval_queue += [f"models/{experiment_name}/{global_step}.pt"]
+                print(f"Evaluating models/{experiment_name}/{global_step}.pt")
+
+            ## EVALUATION LOGIC:
+            if os.path.exists("league.temp.csv"):
+                league = pd.read_csv("league.temp.csv", index_col="name")
+                if len(eval_queue) > 0:
+                    model_path = eval_queue[0]
+                    if model_path in league.index:
+                        model_global_step = int(model_path.split("/")[-1][:-3])
+                        print(f"Model global step: {model_global_step}")
+                        eval_queue = eval_queue[1:]
+                        print("charts/trueskill", league.loc[model_path]["trueskill"], model_global_step)
+                        writer.add_scalar("charts/trueskill", league.loc[model_path]["trueskill"], model_global_step)
+
+                        # Table visualization logic
+                        trueskill_data = {
+                            "name": league.loc[model_path].name,
+                            "mu": league.loc[model_path]["mu"],
+                            "sigma":league.loc[model_path]["sigma"],
+                            "trueskill": league.loc[model_path]["trueskill"]
+                        }
+                        trueskill_df = trueskill_df.append(trueskill_data, ignore_index=True)
+                        wandb.log({"trueskill": wandb.Table(dataframe=trueskill_df)})
+                        trueskill_data["type"] = "training"
+                        trueskill_data["step"] = model_global_step
+                        trueskill_step_df = trueskill_step_df.append(trueskill_data, ignore_index=True)
+                        preset_trueskill_step_df_clone = preset_trueskill_step_df.copy()
+                        preset_trueskill_step_df_clone["step"] = model_global_step
+                        trueskill_step_df = trueskill_step_df.append(preset_trueskill_step_df_clone, ignore_index=True) 
+                        wandb.log({"trueskill_step": wandb.Table(dataframe=trueskill_step_df)})
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
@@ -472,5 +521,5 @@ if __name__ == "__main__":
         writer.add_scalar("charts/sps", int(global_step / (time.time() - start_time)), global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
 
-    # envs.close()
-    # writer.close()
+    envs.close()
+    writer.close()
