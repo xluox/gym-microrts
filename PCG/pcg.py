@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument('--num-maps', type=int, default=200, help='the number of the maps to generate')
     parser.add_argument('--seed', type=int, default=1,
         help='seed of the experiment')
-    parser.add_argument('--wall-rings-vary', type=bool, default=False, help='the switch to turn on varying wall rings')
+    parser.add_argument('--wall-rings-vary', type=bool, default=True, help='the switch to turn on varying wall rings')
     args = parser.parse_args()
     # fmt: on
 
@@ -37,7 +37,7 @@ class PCG:
         self.height = height
         self.width = width
         self.wall_rings_vary = wall_rings_vary
-        self.wallRingsLimit = min(height, width) // 2 - 3
+        self.wallRingsLimit = min(height, width) // 2 - 4
         if self.wallRingsLimit < 0:
             self.wallRingsLimit = 0
         if self.wall_rings_vary:

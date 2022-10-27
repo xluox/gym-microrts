@@ -46,7 +46,7 @@ def parse_args():
 
     parser.add_argument('--partial-obs', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True,
         help='if toggled, the game will have partial observability')
-    parser.add_argument('--evals', nargs='+', default=["randomBiasedAI","workerRushAI","lightRushAI", "coacAI"], # [],
+    parser.add_argument('--evals', nargs='+', default=["randomBiasedAI","workerRushAI","lightRushAI","coacAI","randomAI","passiveAI","naiveMCTSAI","mixedBot","rojo","izanagi" ,"tiamat","guidedRojoA3N"], # [],
         help='the ais')
     parser.add_argument('--num-matches', type=int, default=10,
         help='seed of the experiment')
@@ -60,7 +60,7 @@ def parse_args():
         help='the output path of the leaderboard csv')
     parser.add_argument('--model-type', type=str, default=f"ppo_gridnet_large", choices=["ppo_gridnet_large", "ppo_gridnet"],
         help='the output path of the leaderboard csv')
-    parser.add_argument('--maps', nargs='+', default=["maps/16x16/basesWorkers16x16B.xml","maps/16x16/basesWorkers16x16C.xml","maps/16x16/basesWorkers16x16D.xml", "maps/16x16/basesWorkers16x16E.xml", "maps/16x16/basesWorkers16x16F.xml"], help='the maps')
+    parser.add_argument('--maps', nargs='+', default=["maps/evaluation_maps/league_16x16_eval_1.xml","maps/evaluation_maps/league_16x16_eval_2.xml","maps/evaluation_maps/league_16x16_eval_3.xml", "maps/evaluation_maps/league_16x16_eval_4.xml", "maps/evaluation_maps/league_16x16_eval_5.xml"], help='the maps')
     # ["randomBiasedAI","workerRushAI","lightRushAI","coacAI"]
     # default=["randomBiasedAI","workerRushAI","lightRushAI","coacAI","randomAI","passiveAI","naiveMCTSAI","mixedBot","rojo","izanagi","tiamat","droplet","guidedRojoA3N"]
     args = parser.parse_args()

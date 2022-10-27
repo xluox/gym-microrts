@@ -90,7 +90,7 @@ def parse_args():
         help='Toggles whether or not to use a clipped loss for the value function, as per the paper.')
     parser.add_argument('--num-models', type=int, default=100,
         help='the number of models saved')
-    parser.add_argument('--max-eval-workers', type=int, default=4,
+    parser.add_argument('--max-eval-workers', type=int, default=0,
         help='the maximum number of eval workers (skips evaluation when set to 0)')
 
     args = parser.parse_args()
@@ -323,6 +323,9 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
+    cycle_maps = []
+    for i in range(199):
+        cycle_maps.append("pcg_map" + "_" + str(i) + ".xml")
     envs = MicroRTSGridModeVecEnv(
         num_selfplay_envs=args.num_selfplay_envs,
         num_bot_envs=args.num_bot_envs,
@@ -335,13 +338,7 @@ if __name__ == "__main__":
         + [microrts_ai.workerRushAI for _ in range(min(args.num_bot_envs, 2))],
         map_paths=["maps/16x16/basesWorkers16x16.xml"],
         reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
-        cycle_maps=[
-            "maps/16x16/basesWorkers16x16A.xml",
-            "maps/16x16/basesWorkers16x16B.xml",
-            "maps/16x16/basesWorkers16x16C.xml",
-            "maps/16x16/basesWorkers16x16D.xml",
-            "maps/16x16/basesWorkers16x16E.xml",
-        ],
+        cycle_maps=cycle_maps,
     )
     envs = MicroRTSStatsRecorder(envs, args.gamma)
     envs = VecMonitor(envs)
@@ -417,7 +414,7 @@ if __name__ == "__main__":
 
         # TRY NOT TO MODIFY: prepare the execution of the game.
         for step in range(0, args.num_steps):
-            # envs.render()
+            envs.render()
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
