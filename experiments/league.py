@@ -46,7 +46,7 @@ def parse_args():
 
     parser.add_argument('--partial-obs', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True,
         help='if toggled, the game will have partial observability')
-    parser.add_argument('--evals', nargs='+', default=["randomBiasedAI","workerRushAI","lightRushAI","coacAI","randomAI","passiveAI","naiveMCTSAI","mixedBot","rojo","izanagi" ,"tiamat","guidedRojoA3N"], # [],
+    parser.add_argument('--evals', nargs='+', default=["randomBiasedAI","workerRushAI","lightRushAI","coacAI","randomAI","passiveAI","naiveMCTSAI","mixedBot","rojo","izanagi","droplet" ,"tiamat","guidedRojoA3N"], # [],
         help='the ais')
     parser.add_argument('--num-matches', type=int, default=10,
         help='seed of the experiment')
