@@ -90,7 +90,7 @@ def parse_args():
         help='Toggles whether or not to use a clipped loss for the value function, as per the paper.')
     parser.add_argument('--num-models', type=int, default=100,
         help='the number of models saved')
-    parser.add_argument('--max-eval-workers', type=int, default=0,
+    parser.add_argument('--max-eval-workers', type=int, default=4,
         help='the maximum number of eval workers (skips evaluation when set to 0)')
 
     args = parser.parse_args()
