@@ -1,4 +1,8 @@
-# Gym-μRTS (pronounced "gym-micro-RTS")
+<p align="center">
+    <img src="https://raw.githubusercontent.com/Farama-Foundation/MicroRTS-Py/master/micrortspy-text.png" width="500px"/>
+</p>
+
+Formerly Gym-μRTS/Gym-MicroRTS
 
 [<img src="https://img.shields.io/badge/discord-gym%20microrts-green?label=Discord&logo=discord&logoColor=ffffff&labelColor=7289DA&color=2c2f33">](https://discord.gg/DdJsrdry6F)
 [<img src="https://github.com/vwxyzjn/gym-microrts/workflows/build/badge.svg">](
@@ -6,7 +10,9 @@ https://github.com/vwxyzjn/gym-microrts/actions)
 [<img src="https://badge.fury.io/py/gym-microrts.svg">](
 https://pypi.org/project/gym-microrts/)
 
-This repo contains the source code for the gym wrapper of μRTS authored by [Santiago Ontañón](https://github.com/santiontanon/microrts). 
+This repo contains the source code for the gym wrapper of μRTS authored by [Santiago Ontañón](https://github.com/santiontanon/microrts).
+
+MicroRTS-Py will eventually be updated, maintained, and made compliant with the standards of the Farama Foundation (https://farama.org/project_standards). However, this is currently a lower priority than other projects we're working to maintain. If you'd like to contribute to development, you can join our discord server here- https://discord.gg/jfERDCSw.
 
 ![demo.gif](static/fullgame.gif)
 
@@ -20,10 +26,8 @@ Prerequisites:
 
 ```bash
 $ git clone --recursive https://github.com/vwxyzjn/gym-microrts.git && \
-cd gym-microrts 
+cd gym-microrts
 poetry install
-# build microrts
-bash build.sh &> build.log
 python hello_world.py
 ```
 
@@ -60,30 +64,49 @@ Note that the experiments in the technical paper above are done with [`gym_micro
 
 Here is a description of Gym-μRTS's observation and action space:
 
-* **Observation Space.** (`Box(0, 1, (h, w, 27), int32)`) Given a map of size `h x w`, the observation is a tensor of shape `(h, w, n_f)`, where `n_f` is a number of feature planes that have binary values. The observation space used in this paper uses 27 feature planes as shown in the following table. A feature plane can be thought of as a concatenation of multiple one-hot encoded features. As an example, if there is a worker with hit points equal to 1, not carrying any resources, owner being Player 1, and currently not executing any actions, then the one-hot encoding features will look like the following:
+* **Observation Space.** (`Box(0, 1, (h, w, 29), int32)`) Given a map of size `h x w`, the observation is a tensor of shape `(h, w, n_f)`, where `n_f` is a number of feature planes that have binary values. The observation space used in this paper uses 29 feature planes as shown in the following table. A feature plane can be thought of as a concatenation of multiple one-hot encoded features. As an example, the unit at a cell could be encoded as follows:
 
-   `[0,1,0,0,0],  [1,0,0,0,0],  [1,0,0], [0,0,0,0,1,0,0,0],  [1,0,0,0,0,0]`
-   
-
-    The 27 values of each feature plane for the position in the map of such worker will thus be:
-    
-    `[0,1,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0]`
-
-* **Partial Observation Space.** (`Box(0, 1, (h, w, 29), int32)`) Given a map of size `h x w`, the observation is a tensor of shape `(h, w, n_f)`, where `n_f` is a number of feature planes that have binary values. The observation space for partial observability uses 29 feature planes as shown in the following table. A feature plane can be thought of as a concatenation of multiple one-hot encoded features. As an example, if there is a worker with hit points equal to 1, not carrying any resources, owner being Player 1,  currently not executing any actions, and not visible to the opponent, then the one-hot encoding features will look like the following:
-
-   `[0,1,0,0,0],  [1,0,0,0,0],  [1,0,0], [0,0,0,0,1,0,0,0],  [1,0,0,0,0,0], [1,0]`
-   
+    * the unit has 1 hit point -> `[0,1,0,0,0]`
+    * the unit is not carrying any resources, -> `[1,0,0,0,0]`
+    * the unit is owned by Player 1 -> `[0,1,0]`
+    * the unit is a worker -> `[0,0,0,0,1,0,0,0]`
+    * the unit is not executing any actions -> `[1,0,0,0,0]`
+    * the unit is standing at free terrain cell -> `[1,0]`
 
     The 29 values of each feature plane for the position in the map of such worker will thus be:
-    
+
     `[0,1,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0]`
 
+* **Partial Observation Space.** (`Box(0, 1, (h, w, 31), int32)`) under the partial observation space, there is an additional two plans indicating if the unit is visible to the opponent. For example, if the unit is visible to the opponent, the feature plane will be `[0,1]`. If the unit is not visible to the opponent, the feature plane will be `[1,0]`. Using the example above and assume the worker unit is not visible, then the 31 values of each feature plane for the position in the map of such worker will thus be:
+
+    `[0,1,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0]`
+
 * **Action Space.** (`MultiDiscrete(concat(h * w * [[6   4   4   4   4   7 a_r]]))`) Given a map of size `h x w` and the maximum attack range `a_r=7`, the action is an (7hw)-dimensional vector of discrete values as specified in the following table. The first 7 component of the action vector represents the actions issued to the unit at `x=0,y=0`, and the second 7 component represents actions issued to the unit at `x=0,y=1`, etc. In these 7 components, the first component is the action type, and the rest of components represent the different parameters different action types can take. Depending on which action type is selected, the game engine will use the corresponding parameters to execute the action. As an example, if the RL agent issues a move south action to the worker at $x=0, y=1$ in a 2x2 map, the action will be encoded in the following way:
-    
+
     `concat([0,0,0,0,0,0,0], [1,2,0,0,0,0,0], [0,0,0,0,0,0,0], [0,0,0,0,0,0,0]]`
     `=[0,0,0,0,0,0,0,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]`
 
-![image](https://user-images.githubusercontent.com/5555347/120344517-a5bf7300-c2c7-11eb-81b6-172813ba8a0b.png)
+<!-- ![image](https://user-images.githubusercontent.com/5555347/120344517-a5bf7300-c2c7-11eb-81b6-172813ba8a0b.png) -->
+
+Here is a table summarizing observation features and action components, where $a_r=7$ is the maximum attack range and `-` means not applicable.
+
+| Observation Features        | Planes             | Description                                              |
+|-----------------------------|--------------------|----------------------------------------------------------|
+| Hit Points                  | 5                  | 0, 1, 2, 3, $\geq 4$                                     |
+| Resources                   | 5                  | 0, 1, 2, 3, $\geq 4$                                     |
+| Owner                       | 3                  | -,player 1, player 2       |
+| Unit Types                  | 8                  | -, resource, base, barrack, worker, light, heavy, ranged |
+| Current Action              | 6                  | -, move, harvest, return, produce, attack                |
+| Action Components           | Range              | Description                                              |
+| Source Unit                 | $[0,h \times w-1]$ | the location of the unit selected to perform an action   |
+| Action Type                 | $[0,5]$            | NOOP, move, harvest, return, produce, attack             |
+| Move Parameter              | $[0,3]$            | north, east, south, west                                 |
+| Harvest Parameter           | $[0,3]$            | north, east, south, west                                 |
+| Return Parameter            | $[0,3]$            | north, east, south, west                                 |
+| Produce Direction Parameter | $[0,3]$            | north, east, south, west                                 |
+| Produce Type Parameter      | $[0,6]$            | resource, base, barrack, worker, light, heavy, ranged    |
+| Relative Attack Position    | $[0,a_r^2 - 1]$    | the relative location of the unit that  will be attacked |
+
 
 ## Evaluation
 
@@ -121,6 +144,19 @@ rm league.csv league.db
 python league.py --evals randomBiasedAI workerRushAI lightRushAI coacAI
 ```
 
+## Multi-maps support
+
+The training script allows you to train the agents with more than one maps and evaluate with more than one maps. Try executing:
+
+```
+cd experiments
+python ppo_gridnet.py \
+    --train-maps maps/16x16/basesWorkers16x16B.xml maps/16x16/basesWorkers16x16C.xml maps/16x16/basesWorkers16x16D.xml maps/16x16/basesWorkers16x16E.xml maps/16x16/basesWorkers16x16F.xml \
+    --eval-maps maps/16x16/basesWorkers16x16B.xml maps/16x16/basesWorkers16x16C.xml maps/16x16/basesWorkers16x16D.xml maps/16x16/basesWorkers16x16E.xml maps/16x16/basesWorkers16x16F.xml
+```
+
+where `--train-maps` allows you to specify the training maps and `--eval-maps` the evaluation maps. `--train-maps` and `--eval-maps` do not have to match (so you can evaluate on maps the agent has never trained on before).
+
 ## Known issues
 
 [ ] Rendering does not exactly work in macos. See https://github.com/jpype-project/jpype/issues/906
@@ -143,23 +179,43 @@ To cite the Gym-µRTS simulator:
 
 ```bibtex
 @inproceedings{huang2021gym,
-  author={Huang, Shengyi and Ontañón, Santiago and Bamford, Chris and Grela, Lukasz},
-  booktitle={2021 IEEE Conference on Games (CoG)}, 
-  title={Gym-µRTS: Toward Affordable Full Game Real-time Strategy Games Research with Deep Reinforcement Learning}, 
-  year={2021},
-  volume={},
-  number={},
-  pages={1-8},
-  doi={10.1109/CoG52621.2021.9619076}}
+  author    = {Shengyi Huang and
+               Santiago Onta{\~{n}}{\'{o}}n and
+               Chris Bamford and
+               Lukasz Grela},
+  title     = {Gym-{\(\mathrm{\mu}\)}RTS: Toward Affordable Full Game Real-time Strategy
+               Games Research with Deep Reinforcement Learning},
+  booktitle = {2021 {IEEE} Conference on Games (CoG), Copenhagen, Denmark, August
+               17-20, 2021},
+  pages     = {1--8},
+  publisher = {{IEEE}},
+  year      = {2021},
+  url       = {https://doi.org/10.1109/CoG52621.2021.9619076},
+  doi       = {10.1109/CoG52621.2021.9619076},
+  timestamp = {Fri, 10 Dec 2021 10:41:01 +0100},
+  biburl    = {https://dblp.org/rec/conf/cig/HuangO0G21.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
 ```
 
 To cite the invalid action masking technique used in our training script:
 
 ```bibtex
-@article{huang2020closer,
-  title={A closer look at invalid action masking in policy gradient algorithms},
-  author={Huang, Shengyi and Onta{\~n}{\'o}n, Santiago},
-  journal={arXiv preprint arXiv:2006.14171},
-  year={2020}
+@inproceedings{huang2020closer,
+  author    = {Shengyi Huang and
+               Santiago Onta{\~{n}}{\'{o}}n},
+  editor    = {Roman Bart{\'{a}}k and
+               Fazel Keshtkar and
+               Michael Franklin},
+  title     = {A Closer Look at Invalid Action Masking in Policy Gradient Algorithms},
+  booktitle = {Proceedings of the Thirty-Fifth International Florida Artificial Intelligence
+               Research Society Conference, {FLAIRS} 2022, Hutchinson Island, Jensen
+               Beach, Florida, USA, May 15-18, 2022},
+  year      = {2022},
+  url       = {https://doi.org/10.32473/flairs.v35i.130584},
+  doi       = {10.32473/flairs.v35i.130584},
+  timestamp = {Thu, 09 Jun 2022 16:44:11 +0200},
+  biburl    = {https://dblp.org/rec/conf/flairs/HuangO22.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 ```

@@ -6,6 +6,7 @@ import random
 import subprocess
 import time
 from distutils.util import strtobool
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -18,9 +19,7 @@ from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
 from gym_microrts import microrts_ai
-from gym_microrts.envs.vec_env import (
-    MicroRTSGridModeSharedMemVecEnv as MicroRTSGridModeVecEnv,
-)
+from gym_microrts.envs.vec_env import MicroRTSGridModeVecEnv
 
 
 def parse_args():
@@ -92,6 +91,10 @@ def parse_args():
         help='the number of models saved')
     parser.add_argument('--max-eval-workers', type=int, default=4,
         help='the maximum number of eval workers (skips evaluation when set to 0)')
+    parser.add_argument('--train-maps', nargs='+', default=["maps/16x16/basesWorkers16x16A.xml"],
+        help='the list of maps used during training')
+    parser.add_argument('--eval-maps', nargs='+', default=["maps/16x16/basesWorkers16x16A.xml"],
+        help='the list of maps used during evaluation')
 
     args = parser.parse_args()
     if not args.seed:
@@ -227,7 +230,7 @@ class Agent(nn.Module):
         return self.critic(self.encoder(x))
 
 
-def run_evaluation(model_path: str, output_path: str):
+def run_evaluation(model_path: str, output_path: str, eval_maps: List[str]):
     args = [
         "python",
         "league.py",
@@ -241,6 +244,8 @@ def run_evaluation(model_path: str, output_path: str):
         output_path,
         "--model-type",
         "ppo_gridnet",
+        "--maps",
+        *eval_maps,
     ]
     fd = subprocess.Popen(args)
     print(f"Evaluating {model_path}")
@@ -336,7 +341,7 @@ if __name__ == "__main__":
         + [microrts_ai.randomBiasedAI for _ in range(min(args.num_bot_envs, 2))]
         + [microrts_ai.lightRushAI for _ in range(min(args.num_bot_envs, 2))]
         + [microrts_ai.workerRushAI for _ in range(min(args.num_bot_envs, 2))],
-        map_paths=["maps/16x16/basesWorkers16x16.xml"],
+        map_paths=[args.train_maps[0]],
         reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
         cycle_maps=cycle_maps,
     )
@@ -406,6 +411,9 @@ if __name__ == "__main__":
     )
 
     for update in range(starting_update, args.num_updates + 1):
+        step_time = 0
+        inference_time = 0
+        get_mask_time = 0
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / args.num_updates
@@ -413,27 +421,34 @@ if __name__ == "__main__":
             optimizer.param_groups[0]["lr"] = lrnow
 
         # TRY NOT TO MODIFY: prepare the execution of the game.
+        rollout_time_start = time.time()
         for step in range(0, args.num_steps):
             envs.render()
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
+
+            get_mask_time_start = time.time()
+            invalid_action_masks[step] = torch.tensor(envs.get_action_mask()).to(device)
+            get_mask_time += time.time() - get_mask_time_start
+
             # ALGO LOGIC: put action logic here
+            inference_time_start = time.time()
             with torch.no_grad():
-                invalid_action_masks[step] = torch.tensor(envs.get_action_mask()).to(device)
                 action, logproba, _, _, vs = agent.get_action_and_value(
                     next_obs, envs=envs, invalid_action_masks=invalid_action_masks[step], device=device
                 )
                 values[step] = vs.flatten()
-
             actions[step] = action
             logprobs[step] = logproba
-            try:
-                next_obs, rs, ds, infos = envs.step(action.cpu().numpy().reshape(envs.num_envs, -1))
-                next_obs = torch.Tensor(next_obs).to(device)
-            except Exception as e:
-                e.printStackTrace()
-                raise
+            cpu_action = action.cpu().numpy().reshape(envs.num_envs, -1)
+            inference_time += time.time() - inference_time_start
+
+            step_time_start = time.time()
+            next_obs, rs, ds, infos = envs.step(cpu_action)
+            step_time += time.time() - step_time_start
+
+            next_obs = torch.Tensor(next_obs).to(device)
             rewards[step], next_done = torch.Tensor(rs).to(device), torch.Tensor(ds).to(device)
 
             for info in infos:
@@ -445,6 +460,7 @@ if __name__ == "__main__":
                         writer.add_scalar(f"charts/episodic_return/{key}", info["microrts_stats"][key], global_step)
                     break
 
+        training_time_start = time.time()
         # bootstrap reward if not done. reached the batch limit
         with torch.no_grad():
             last_value = agent.get_value(next_obs).reshape(1, -1)
@@ -537,7 +553,10 @@ if __name__ == "__main__":
                 wandb.save(f"models/{experiment_name}/agent.pt", base_path=f"models/{experiment_name}", policy="now")
             if eval_executor is not None:
                 future = eval_executor.submit(
-                    run_evaluation, f"models/{experiment_name}/{global_step}.pt", f"runs/{experiment_name}/{global_step}.csv"
+                    run_evaluation,
+                    f"models/{experiment_name}/{global_step}.pt",
+                    f"runs/{experiment_name}/{global_step}.csv",
+                    args.eval_maps,
                 )
                 print(f"Queued models/{experiment_name}/{global_step}.pt")
                 future.add_done_callback(trueskill_writer.on_evaluation_done)
@@ -552,6 +571,13 @@ if __name__ == "__main__":
         if args.kle_stop or args.kle_rollback:
             writer.add_scalar("debug/pg_stop_iter", i_epoch_pi, global_step)
         writer.add_scalar("charts/sps", int(global_step / (time.time() - start_time)), global_step)
+        writer.add_scalar("charts/sps_step", int(args.num_envs * args.num_steps / step_time), global_step)
+        writer.add_scalar("charts/sps_inference", int(args.num_envs * args.num_steps / inference_time), global_step)
+        writer.add_scalar("charts/step_time", step_time, global_step)
+        writer.add_scalar("charts/inference_time", inference_time, global_step)
+        writer.add_scalar("charts/get_mask_time", get_mask_time, global_step)
+        writer.add_scalar("charts/rollout_time", time.time() - rollout_time_start, global_step)
+        writer.add_scalar("charts/training_time", time.time() - training_time_start, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
 
     if eval_executor is not None:
