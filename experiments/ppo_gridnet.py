@@ -331,7 +331,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
     cycle_maps = []
-    if args.pcg_mode:
+    if args.pcg_mode is True:
         for i in range(199):
             cycle_maps.append("pcg_map" + "_" + str(i) + ".xml")
     envs = MicroRTSGridModeVecEnv(
