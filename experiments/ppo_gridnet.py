@@ -49,6 +49,8 @@ def parse_args():
         help="the entity (team) of wandb's project")
     parser.add_argument('--pcg-mode', type=lambda x: bool(strtobool(x)), nargs='?', default=False,
         help='train with PCG training maps')
+    parser.add_argument('--pcg-nums', type=int, default=200,
+        help='total pcg maps used in the experiments')
 
     # Algorithm specific arguments
     parser.add_argument('--partial-obs', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True,
@@ -331,9 +333,13 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
     cycle_maps = []
+    multiplier = 200 // args.pcg_nums
     if args.pcg_mode == True:
-        for i in range(199):
-            cycle_maps.append("pcg_map" + "_" + str(i) + ".xml")
+        for i in range(args.pcg_nums):
+            remainder = random.randint(0, multiplier-1)
+            cycle_maps.append("pcg_map" + "_" + str(i * multiplier + remainder) + ".xml")
+    print(args.pcg_nums)
+    print(cycle_maps)
     envs = MicroRTSGridModeVecEnv(
         num_selfplay_envs=args.num_selfplay_envs,
         num_bot_envs=args.num_bot_envs,
